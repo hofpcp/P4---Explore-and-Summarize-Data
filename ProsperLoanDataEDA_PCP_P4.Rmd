@@ -1,0 +1,789 @@
+# Prosper Loan Data Exploration by Peter Carsten Petersen
+
+## P4 - Explore and Summarize Data
+
+## July 2016
+
+========================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# Loading all necessary libraries for analysis and plotting
+
+library(ggplot2)
+library(gridExtra)
+library(corrplot)
+library(PerformanceAnalytics)
+library(plyr)
+library(dplyr)
+library(psych)
+library(RColorBrewer)
+
+
+```
+
+```{r echo=FALSE, Load_the_Data}
+# Loading the Data and changing to ordered factors where necessary and limiting dataset
+# to only data post July 2009. As well as renaming variables to start with lowercase. 
+
+loans <- read.csv('prosperLoanData.csv')
+
+loansnew <- loans[, c('Term', 'LoanStatus', 'BorrowerRate', 'EstimatedLoss',
+                      'ProsperRating..Alpha.', 'ProsperScore', 'ListingCategory..numeric.',
+                      'EmploymentStatus', 'IsBorrowerHomeowner', 'CreditScoreRangeLower',
+                      'CreditScoreRangeUpper', 'IncomeRange', 'LoanOriginalAmount')]
+
+loansnew$IncomeRange <- ordered(loansnew$IncomeRange, levels = c("Not displayed", "$0",
+                                                          "Not employed" ,"$1-24,999",
+                                                          "$25,000-49,999","$50,000-74,999",
+                                                          "$75,000-99,999","$100,000+"))
+
+loansnew$ProsperRating..Alpha. <- ordered(loansnew$ProsperRating..Alpha., levels = c('HR','E',
+                                                                                     'D','C',
+                                                                                     'B','A',
+                                                                                     "AA"))
+
+loansnew$CreditScoreRangeAvg <- (loansnew$CreditScoreRangeLower +
+                                   loansnew$CreditScoreRangeUpper) / 2
+
+loansnew$CreditScoreRangeLower <- NULL
+loansnew$CreditScoreRangeUpper <- NULL
+
+loansnew <- subset(loansnew, !is.na(ProsperRating..Alpha.))
+
+loansnew <- plyr::rename(loansnew, c('Term' = 'term', 'LoanStatus' = 'loanStatus',
+                                     'BorrowerRate' = 'borrowerRate', 'EstimatedLoss' =
+                                       'estimatedLoss',  'ProsperRating..Alpha.' =
+                                       'prosperRating', 'ProsperScore' = 'prosperScore',
+                                     'ListingCategory..numeric.' = 'listingCategory',
+                                     'EmploymentStatus' = 'employmentStatus',
+                                     'IsBorrowerHomeowner' = 'isBorrowerHomeowner',
+                                     'IncomeRange' = 'incomeRange', 'LoanOriginalAmount' =
+                                       'loanOriginalAmount', 'CreditScoreRangeAvg' =
+                                       'creditScoreRangeAvg'))
+
+
+```
+
+
+This report/analysis is done on the ProsperLoan dataset, which contains records for 113,937 individual loans with 81 variables.
+
+From wikepedia: Prosper Marketplace, Inc. is a San Francisco, California-based company in the peer-to-peer lending industry. The company operates Prosper.com, a website where individuals can either invest in personal loans or request to borrow money.
+
+From research done on ProsperLoan it is noticed that the business model changed signifcantly post July 2009 when company was registered at the SEC. From very top level exploration this is evident in a number of variables which include N/A for periods before July 2009. Therefore I have made an upfront decision to limit dataset to records after July 2009 which reduced number of records to 83,853 and I have furthermore choosen 13 variables from the 81 in the dataset, on which EDA will be conducted.   
+
+The following is a list of variables choosen and summary statistics on same.
+
+# Univariate Plots Section
+```{r echo=FALSE, message=FALSE, warning=FALSE, Univariate_Overview}
+# Simple Overview and summary statistics of data
+str(loansnew)
+
+summary(loansnew)
+
+```
+
+
+Note: Variable "CreditScoreRangeAvg" is a calculated average from the 2 variables "CreditScoreRangeLower"/"CreditScoreRangeUpper" in original dataset. This reducing the variables in subset to 12 variables for EDA exercise.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Borrower_rate}
+# Simple Histogram  of BorrowerRate
+ggplot(aes(x = borrowerRate), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  ggtitle('Distribution of BorrowerRate')
+  
+```
+
+
+BorrowerRate is showing an approximate normal distribution, but adjusting the bin size and axis scaling, can help show more presice information.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Borrower_rate_II}
+# Histogram BorrowerRate with adjusted binwidth an x-axis scale
+ggplot(aes(x = borrowerRate), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420', binwidth = 0.02) +
+  scale_x_continuous(limits = c(0, 0.35),breaks = seq(0, 0.35, 0.05)) +
+  ggtitle('Distribution of BorrowerRate')
+summary(loansnew$borrowerRate)
+
+```
+
+
+Most BorrowerRate's are situated around 0.15 +/- 0.5 but due to some peaks between 0.25 and 0.35 the mean is approx. 0.2.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, EstimatedLoss}
+# Histogram EstimatedLoss
+ggplot(aes(x = estimatedLoss), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  ggtitle('Distribution of EstimatedLoss Rates')
+
+# Histogram EstimatedLoss with adjusted bin size and scale x-axis
+
+
+ggplot(aes(x = estimatedLoss), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420', binwidth = 0.02) +
+  xlim(0,0.2) +
+  ggtitle('Distribution of EstimatedLoss Rates')
+
+```
+
+
+Due to some outliers at > 0.2 the distribution of EstimateLoss is left skewed, when removing these outliers we can see most EstimatedLoss's are in the 0.025 to 0.075 range.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Term}
+# Histogram and table for Term 
+ggplot(aes(x = term), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  ggtitle('Distribution of Term in months')
+
+table(loansnew$term)
+prop.table(table(loansnew$term))
+
+```
+
+
+Term is very straigtforward with only 3 options and need only be viewed in table format. 36(months) is by far the most popular option being 69% of total.    
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, LoanStatus}
+# Bar chart for LoanStatus 
+ggplot(aes(x = loanStatus), data = loansnew) +
+  geom_bar(color = 'black', fill = '#F79420', stat = 'count') +
+  theme(axis.text.x=element_text(angle = 45, hjust = 1)) +
+  ggtitle('Distribution of LoanStatus')
+
+```  
+
+
+LoanStatus includes a number of options with very few records, in order to better understand distribution the "PastDue" options are cut into one total bucket.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, LoanStatusII}
+
+# Cutting LoanStatus data so that "PasDue...."" buckets are including in one bucket.
+
+loansnew$loanStatus.bucket <- cut(as.numeric(loansnew$loanStatus), c(1,2,3,4,5,6,12))
+
+# New levels to reflect new bucket for "PastDue"
+
+levels(loansnew$loanStatus.bucket) <-c('Chargedoff','Completed',
+                                      'Current','Defaulted','FinalPaymentInProgress','PastDue')
+
+
+ggplot(aes(x = loanStatus.bucket), data = loansnew) +
+  geom_bar(color = 'black', fill = '#F79420', stat = 'count') +
+  theme(axis.text.x=element_text(angle = 45, hjust = 1)) +
+  ggtitle('Distribution of LoanStatus')
+
+
+table(loansnew$loanStatus.bucket)
+```
+
+
+Adding "PastDue" to one bucket does not change picture much, most records are either current or completed, with a noticeable "ChargedOff" at > 5,000 records.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, ListingCategory}
+# Histogram for ListingCategories. 
+ggplot(aes(x = listingCategory), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  ggtitle('Distribution of Listing Categories')
+
+
+```
+
+
+At facevalue this variable does not contain much information being numerical only. In order to explore it has been mapped to the decsription found in the ProsperLoanData variable dictionary.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, ListingCategoryincltext}
+
+# Listing categories mapped to descriptive text and bar chart sorted decreasing
+loansnew$listingCategory <- ordered(loansnew$listingCategory)
+
+levels(loansnew$listingCategory) <- c('Not Available','Debt Consolidation',
+                                      'Home Improvement','Business','Personal Loan',
+                                      'Student Use', 'Auto', 'Other',
+                                      'Baby&Adoption','Boat','Cosmetic Procedure',
+                                      'Engagement Ring','Green Loans',
+                                      'Household Expenses','LargePurchases',
+                                'Medical/Dental','Motorcycle','RV','Taxes',
+                                'Vacation','Wedding Loans')
+
+
+ggplot(loansnew,
+       aes(x=reorder(listingCategory,listingCategory,
+                     function(x)-length(x)))) +
+       geom_bar(color = 'black', fill = '#F79420') +
+  theme(axis.text.x=element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(limits = c(0, 55000),breaks = seq(0, 55000, 5000)) +
+  ggtitle('Listing Catories sorted')
+
+
+prop.table(table(loansnew$listingCategory))
+summary(loansnew$listingCategory)
+```
+
+
+Debt consolidation is by far the most chosen option for loan > 60% of total and including Auto, Home Improvement and Business close to 90%.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, EmploymentStatus}
+# Bar chart EmploymentStatus 
+ggplot(aes(x = employmentStatus), data = loansnew) +
+  geom_bar(color = 'black', fill = '#F79420', stat = 'count') +
+  theme(axis.text.x=element_text(angle = 45, hjust = 1)) + 
+  ggtitle('Distribution of EmployementStatus')
+```
+
+
+EmployementStatus looks to be a variable of less interest, as options seem to be overlapping and ambigous. Takeaway is that an ovewhelming amount of information given is for being employed in some way.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, IsBorrowerHomeowner}
+# Pie chart IsBorrowerHomeowner 
+ggplot(loansnew, aes(x=factor(1), fill= isBorrowerHomeowner))+
+  geom_bar(width = 1, stat = 'count')+
+  coord_polar("y") +
+  ggtitle('Split of Homeowner vs Non-Homeowver')
+
+prop.table(table(loansnew$isBorrowerHomeowner))
+
+```
+
+
+IsBorrowerHomeowner Variable was chosen as I believed it could have a major impact on other variables, but seeing that the split is almost 50/50 i am now less sure that this is a major factor. 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, LoanOriginalAmount}
+# Histogram LoanOrginalAmount 
+ggplot(aes(x = loanOriginalAmount), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420', binwidth = 5000) +
+  ggtitle('Distribution of LoanOriginalAmount')
+summary(loansnew$loanOriginalAmount)
+```
+
+
+According to www.prosper.com, loans are offered up to $35,000USD so Max of 35,000 is no surprise. Bulk of loans are between $7,500 and $12,500 with a mean of approx. $9,000.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, CreditScoreRangeAvg}
+# Histogram CreditScoreRangeAvg and extra histogram with adjusted bin size and adjusted
+# x-axis
+
+ggplot(aes(x = creditScoreRangeAvg), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  ggtitle('Distribution of CreditScoreRangeAvg')
+
+ggplot(aes(x = creditScoreRangeAvg), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420', binwidth = 40) +
+  scale_x_continuous(breaks = seq(0, 900, 50)) +
+  ggtitle('Distribution of CreditScoreRangeAvg')
+
+summary(loansnew$creditScoreRangeAvg)
+```
+
+
+Bin size and X-axis adjusted to show most CreditScores between 675 and 725, with a mean of 708.9
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, IncomeRange}
+
+# Bar chart IncomeRange 
+
+ggplot(aes(x = incomeRange), data = loansnew) +
+  geom_bar(color = 'black', fill = '#F79420', stat = 'count') +
+  theme(axis.text.x=element_text(angle = 45, hjust = 1)) +
+  ggtitle('Distribution of IncomeRange')
+
+```
+
+
+IncomeRange increasing to $75,000 and then dropping off. Small increase $100,000+ vs. $75,000-99,999 is counter logical, would have expected a further decrease. 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, ProsperRating_Score}
+
+# Bar chart ProsperRating. 
+ggplot(aes(x = prosperRating), data = loansnew) +
+  geom_bar(color = 'black', fill = '#F79420', stat = 'count') +
+  ggtitle('Distribution of ProsperRating')
+  
+# Histogram ProsperScore. 
+ggplot(aes(x = prosperScore), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420', binwidth = 1.5) +
+  scale_x_continuous(limits = c(0, 12),breaks = seq(0, 12, 1)) +
+  ggtitle('Distribution of ProsperScore')
+
+summary(loansnew$prosperScore)
+```
+
+
+ProsperRating and ProsperScore assumed closely correlated, but there is a noticeable variance with Prosperrating almost perfectly normal distributed, prosperscore is bi-modal distributed around the Median. These distributions are not surprising given that data is only for loans given, if data had included also loans not approved/funded, the distributions would probably be more positively skewed. 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Borrower_rate_facet}
+# Histogram Borrower_rate extended with facet_wrap for incomerange and prosperrating
+
+ggplot(aes(x = borrowerRate), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  ggtitle('Distribution of borrowerRate')
+
+
+ggplot(aes(x = borrowerRate), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  facet_wrap(~incomeRange) +
+  ggtitle('BorrowerRate per incomeRange')
+
+
+
+ggplot(aes(x = borrowerRate), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  facet_wrap(~prosperRating) +
+  ggtitle('BorrowerRate per ProsperRating')
+
+```
+
+
+Revisiting the dual peak of BorrowerRate I was wondering if this could be further explained via faceting with IncomeRange? But this is definately not the case as almost all distributions are similar to BorrowerRate distribution. But faceting with ProsperRating is definately pointing towards an explantion as BorrowerRate is moving from right to left with improvement in ProsperRating.  
+
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+There are 84,853 loan records in the adjusted dataset, with 12 chosen variables (term, loanStatus, borrowerRate, estimatedLoss, prosperRating, prosperScore, listingCategory, employmentStatus, isBorrowerHomeowner, incomeRange, loanOriginalAmount, creditScoreRangeAvg)
+Variables prosperRating and incomeRange are ordered Factor variables with following levels:
+
+(Worst) -----------------> (Best)
+
+prosperRating: HR,E,D,C,B,A,AA
+
+incomeRange: $0,'Not employed',$1-24.999,$25.000-49.999,$50.000-74.999,$75.000-99.000,$100.000+
+
+Other observations:
+* Most loans are with a 36month term
+* The Mean loan amount is $9.083
+* An overwhelming amount of loans are requested for debt consolidation
+* Loan takers are split approximately 50/50 between homeowners and non-homeowners
+* Median borrowerrate is 0.1875 and the max borrowerrate is 0.36 
+
+### What is/are the main feature(s) of interest in your dataset?
+The main feature of the dataset is borrowerRate and prosperRating. I would like to analyze what features are best for predicting the borrowerRate. The prosperRating seems to be the most likely candidate. 
+
+### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+prosperScore, loanOriginalAmount and creditScoreRatingAvg could logically also have an impact on borrowerRate, while estimatedLoss seems to be a product of borrowerRate or possibly vice-versa.
+
+
+### Did you create any new variables from existing variables in the dataset?
+creditScoreRangeAvg was created as the average of the 2 variables from the orginal dataset "CreditScoreRangeLower"/"CreditScoreRangeUpper".
+All variables were changed from the original syntax of uppercase first character to lowercase and over-explained naming simplified. e.g."ProsperRating..Alpha" changed to "prosperRating" 
+
+
+### Of the features you investigated were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+borrowerRate at first look had a number of peaks, which via adjusting bin-size showed a distibution around 0.18-0.20 with a further peak at approx. 0.32. Analysis was extended to include borrowerRate faceted with incomeRange and prosperRating respectively, revealing a possible very strong relationship between borrowerRate and prosperRating.
+
+listingCategory which in original form was only a numeric value was mapped against the data library description of numerical values, to increase information value. The data was then plotted in a bar chart sorted in decreasing order for count. Data showed an overwhemling amount of loans take for debt consolidation.
+
+loanStatus had a large number of records which were split into a number of buckets which were all described "past due.....". Data was cut into one total bucket "past-due" to view if this had any significance. Even when pooled together the loanStatus shows very few records which are past-due. 
+
+
+# Bivariate Plots Section
+```{r echo=FALSE, message=FALSE, warning=FALSE, Bivariate_Plots}
+# In order to make correlation martix and variable pairs overview, numeric variables
+# are collected in data subset
+
+loansnewcorr <- loansnew[, c(1,3,4,5,6,11,12)] 
+str(loansnewcorr)
+```
+
+
+In order to do a correlation matrix a subset of data is created.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, correlationplot}
+# ProsperRating manipulated into numeric scale and correlation matrix
+
+loansnewcorr$prosperRating<- as.numeric(loansnewcorr$prosperRating)
+
+corrplot(cor(loansnewcorr), method = 'number',tl.col="black", tl.srt=45)
+
+```
+
+
+The variables of borrowerRate and prosperRating is as expected very high, as well as between borrowerRate and estimatedLoss.
+
+Further significant relationships could be found between in decending order borrowerRate/prosperScore - borrowerRate/creditScoreAvg - borrowerRate/loanOriginalAmount
+
+And finally between prosperRating/prosperScore.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fullpairsplot}
+
+# Variable pairs matrix using the PerformanceAnalytics package
+
+chart.Correlation(loansnewcorr, histogram=TRUE, pch=19)
+
+```
+
+
+From this subset I want to look closer at relationship between borrowerRate and prosperRating, prosperScore, loanOriginalAmount, creditScoreRangeAvg, as well as between prosperRating and prosperScore using scatterplots/boxplots and summary statistics.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, BorroweRatevsProsperRating}
+
+# Scatterplot and boxplot for borrowerRate and prosperRating
+
+ggplot(aes(x = borrowerRate, y = prosperRating), data = loansnew) +
+  geom_point() +
+  ggtitle('BorrowerRate vs ProsperRating')
+
+
+ggplot(aes(x = prosperRating, y = borrowerRate), data = loansnew) +
+  geom_boxplot() +
+  ggtitle('BorrowerRate vs ProsperRating')
+
+
+# borrowerRate statistics summary faceted with prosperRating
+
+tapply(loansnew$borrowerRate, loansnew$prosperRating, summary)
+
+
+```
+
+
+The boxplot and exact detail in summary, further illustrates the very strong realationship between borrowerRate and prosperRating, note how the 1st to 3rd quartiles of borrowerRate per prosperRating, have almost no overlap.   
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, BorroweRatevsProsperScore}
+
+# Scatterplot and boxplot for borrowerRate and prosperScore
+
+
+ggplot(aes(x = borrowerRate, y = prosperScore), data = loansnew) +
+  geom_point() +
+  ggtitle('BorrowerRate vs ProsperScore')
+
+
+ggplot(aes(x = prosperScore, y = borrowerRate, group = prosperScore), data = loansnew) +
+  geom_boxplot() +
+  ggtitle('BorrowerRate vs ProsperScore')
+
+# borrowerRate statistics summary faceted with prosperscore
+
+
+tapply(loansnew$borrowerRate, loansnew$prosperScore, summary)
+
+```
+
+
+prosperScore does not show the same strong relationsship with borrowerRate as prosperRating, many overlapping borrowerRate's per prosperScore and definately less linearity.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, ProsperRatingvsProsperScore}
+
+# boxplot for prosperRating and prosperScore
+
+ggplot(aes(x = prosperRating, y = prosperScore), data = loansnew) +
+  geom_boxplot() +
+  ggtitle('ProsperRating vs ProsperScore')
+
+# prosperScore statistics summary faceted with prosperRating
+
+tapply(loansnew$prosperScore, loansnew$prosperRating, summary)
+
+```
+
+
+This relationship is somewhat surprising, note how median prosperScore is higher for "HR" vs "E", as well as equal between 'D' and 'C'. From further reading on www.prosper.com it is noted that while prosperRating is calculated using a model ensuring consistency, prosperScore is a custom built tool using not only lenders own data and history, but also history from peer group.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, BorroweRatevsLoanOriginalAmount}
+
+# Scatterplot for borrowerRate and LoanOriginalAmount
+
+
+ggplot(aes(x = borrowerRate, y = loanOriginalAmount), data = loansnew) +
+  geom_point() +
+  ggtitle('BorrowerRate vs LoanOriginalAmount')
+
+ggplot(aes(x = borrowerRate, y = loanOriginalAmount), data = loansnew) +
+  geom_point(alpha = 1/2, size = 3/4, position = 'jitter') +
+  scale_x_log10() +
+  ggtitle('log(10)BorrowerRate vs LoanOriginalAmount')
+  
+
+```
+
+
+borrowerRate vs loanOriginalAmount is as expected not displaying any significant relationsship, even when adjusting for overplotting etc.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, BorroweRatevsEstimatedLoss}
+
+# Scatterplots for borrowerRate and EstimatedLoss
+
+
+ggplot(aes(x = borrowerRate, y = estimatedLoss), data = loansnew) +
+  geom_point() +
+  ggtitle('BorrowerRate vs EstimatedLoss')
+  
+
+
+ggplot(aes(x = borrowerRate, y = estimatedLoss), data = loansnew) +
+  geom_point(position = 'jitter') +
+  scale_y_continuous(limits = c(0, 0.25),breaks = seq(0, 0.25, 0.05)) +
+  scale_x_continuous(limits = c(0, 0.3),breaks = seq(0, 0.3, 0.05)) +
+  geom_smooth() +
+  ggtitle('BorrowerRate vs EstimatedLoss')
+
+
+```
+
+
+borrowerRate and estimatedLoss after eliminating the outliers above 0.3 estimated loss, shows a very fine liniar relationship
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, BorroweRatevsCreditScore}
+
+# Scatterplots for borrowerRate and creditScoreRangeAvg
+
+ggplot(aes(x = borrowerRate, y = creditScoreRangeAvg), data = loansnew) +
+  geom_point() +
+  ggtitle('BorrowerRate vs CreditScoreRangeAvg')
+
+
+ggplot(aes(x = borrowerRate, y = creditScoreRangeAvg), data = loansnew) +
+  geom_point(alpha = 1/10, size = 1/2, position = 'jitter') +
+  geom_smooth() +
+  ggtitle('BorrowerRate vs CreditScoreRangeAvg')
+```
+
+
+borrowerRate vs. creditScoreAvg however is showing a far less liniar relationsship although trend of lower creditScoreAvg = higher borrowerRate is visible.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, EstimatedLossvsProsperRating}
+
+# Scatterplot and boxplot for prosperRating and estimatedLoss
+
+ggplot(aes(x = prosperRating, y = estimatedLoss), data = loansnew) +
+  geom_point() +
+  ggtitle('ProsperRating vs EstimatedLoss')
+
+ggplot(aes(x = prosperRating, y = estimatedLoss), data = loansnew) +
+  geom_boxplot() +
+  ylim(0,0.2) +
+  ggtitle('ProsperRating vs EstimatedLoss')
+
+
+cor(loansnewcorr$prosperRating, loansnewcorr$estimatedLoss)
+```
+
+
+Finally please note the almost perfect relationsship between prosperRating and estimatedLoss with almost no overlap between prosperRating/estimatedLoss pairs, and only outliers in the "HR" prosperRating. 
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?
+BorrowerRate correlates strongly with prosperRating and to a lesser extent with prosperScore and creditScoreAvg. 
+
+As prosperRating decreases (i.e. from Best to worst) the borrowerRate increases, same relationship with prosperScore and creditScoreAvg. Relationship between borrowerRate and prosperRating seems liniar.
+
+### Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+Further interesting relationships are seen between prosperScore and prosperRating as well as between estimated loss and prosperScore. 
+
+Also between borrowerRate and prosperScore, showing unusual and counter logical relationsship across prosperScore, indicating that one or more other variables are needed to explain this relationsship. A further investigation on prosper website clarifies this, as stated:
+
+Prosper uses both the custom score (prosperScore) and the credit reporting agency score (creditScoreRangeAvg) together to assess the borrower's level of risk and determine estimated loss rates (estimatedLoss).
+
+### What was the strongest relationship you found?
+Relationship between borrowerRate and estimatedLoss as well as between prosperRating and estimatedLoss are extremely strong, so strong in fact that i suspect that one is a direct product of the other.
+
+This relationship between borrowerRate/estimatedLoss/prosperRating as well as prosperScore will be investigated further in the next section.
+
+
+# Multivariate Plots Section
+```{r echo=FALSE, message=FALSE, warning=FALSE, BorrowerRate_multi_analysis}
+
+# new Subset of data and prosperScore converted into factored variable so that
+# faceting can be done more clearly/specified
+
+
+loansnewmulti <- loansnew[, c(3,4,5,6,12)] 
+
+loansnewmulti$prosperScore <- cut(loansnewmulti$prosperScore, br = 1:11)                      
+
+# scatterplots of borrowerrate vs CreditScoreRangeAvg/prosperRating/ProsperScore
+
+ggplot(aes(x= creditScoreRangeAvg, y = borrowerRate), data = loansnew) +
+  geom_point(aes(color = prosperRating), size = 2) +
+  scale_fill_brewer(type = 'qual') +
+  ggtitle('BorrowerRate vs. CreditScoreRangeAvg specified on ProsperRating')
+
+ggplot(aes(x= creditScoreRangeAvg, y = borrowerRate), data = loansnewmulti) +
+  geom_point(aes(color = prosperScore), size = 2) +
+  scale_fill_brewer(type = 'qual') +
+  ggtitle('BorrowerRate vs. CreditScoreRangeAvg specified on ProsperScore')
+
+```
+
+
+Following the finding in the Bi-variate section I am looking for relationsships, between the main variables borrowerRate/creditScoreRangeAvg and specified via prosperRating or prosperScore. While there seems to be some relationship between these variables, it is only highlevel and not estimated very strong, next I will exchange estimatedLoss for borrowerRate and do same plotting. 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, EstimatedLoss_multi_analysis}
+
+# scatterplots of estimatedLoss vs CreditScoreRangeAvg/prosperRating/ProsperScore
+
+ggplot(aes(x= creditScoreRangeAvg, y = estimatedLoss), data = loansnew) +
+  geom_point(aes(color = prosperRating), size = 2) +
+  scale_fill_brewer(type = 'qual') +
+  ggtitle('EstimatedLoss vs. CreditScoreRangeAvg specified on ProsperRating')
+
+ggplot(aes(x= creditScoreRangeAvg, y = estimatedLoss), data = loansnewmulti) +
+  geom_point(aes(color = prosperScore), size = 2) +
+  scale_fill_brewer(type = 'qual') +
+  ggtitle('EstimatedLoss vs. CreditScoreRangeAvg specified on ProsperScore')
+
+```
+
+
+Using estimatedLoss definately shows a more solid relationsship, with a narrow band for all prosperScore/prosperRating and estimatedLoss/creditScoreRangeAvg pairings. Only outliers are on the prosperRating "HR" the High-Risk category, which makes sense since this is the last and worst category available and needs to incorporate all High Risk estimatedLoss's in this bucket.
+
+
+Building further on this we can look at the relationship on a Mean basis
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, multi_analysis_mean}
+
+# Lineplots on mean estimatedLoss vs CreditScoreRangeAvg specified on
+# prosperscore/prosperrating 
+
+ggplot(aes(x = creditScoreRangeAvg, y = estimatedLoss), data = loansnew) +
+  geom_line(aes(color = prosperRating), stat = 'summary', fun.y = mean ) +
+  ggtitle('Mean EstimatedLoss vs. CreditScoreRangeAvg specified on ProsperRating')
+
+ggplot(aes(x = creditScoreRangeAvg, y = estimatedLoss), data = loansnewmulti) +
+  geom_line(aes(color = prosperScore), stat = 'summary', fun.y = mean )+
+  ggtitle('Mean EstimatedLoss vs. CreditScoreRangeAvg specified on ProsperScore')
+
+
+```
+
+
+This further illustrates the strong relationsship between estimatedLoss/creditScoreRangeAvg and prosperRating/prosperScore, but there are some un-expected increases at the highest creditScoreRangeAvg. Perhaps including both prosperRating and prosperScore in analysis, as well as all 5 variables will show a clearer picture. 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, final_multi}
+
+# Faceted scatterplots for mix of CreditScoreRangeAvg/borrowerRate/prosperRating
+# Prosperscore
+
+ggplot(aes(x = creditScoreRangeAvg, y = borrowerRate), data = loansnewmulti) +
+  facet_wrap(~ prosperRating) +
+  geom_jitter(alpha = 1/4 , aes(color = prosperScore)) +
+  scale_fill_brewer(type = 'div') +
+  ggtitle('BorrowerRate vs. CreditScoreRangeAvg faceted via ProsperScore')
+
+ggplot(aes(x = creditScoreRangeAvg, y = estimatedLoss), data = loansnewmulti) +
+  facet_wrap(~ prosperRating) +
+  geom_jitter(alpha = 1/4 , aes(color = prosperScore)) +
+  scale_fill_brewer(type = 'div') +
+  ggtitle('EstimatedLoss vs. CreditScoreRangeAvg faceted via ProsperScore')
+
+ggplot(aes(x = creditScoreRangeAvg, y = estimatedLoss/borrowerRate), data = loansnewmulti) +
+  facet_wrap(~ prosperRating) +
+  geom_jitter(alpha = 1/4 , aes(color = prosperScore)) +
+  scale_fill_brewer(type = 'div') +
+  ggtitle('EstimatedLoss/BorrowerRate vs. CreditScoreRangeAvg faceted via ProsperScore')
+
+
+
+```
+
+
+This definately reuslted in a better fit. For all three options, the high variability is evident in the "HR" bucket and improved estimatedLoss/borrowerRate highly visible when improving score/rating and creditScore. Especially the last chart including all 5 variables seems to be a good illustration of how the 5 variables are connected. 
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+Drawing on the insights from the bi-variate section, it was found, when including all 5 variables, a strong connected relationship, this is somewhat expected in financial loan data, as both borrower and lender will have many other options to lend/invest and consistency/transparency is required.
+
+### Were there any interesting or surprising interactions between features?
+It was noted that no combination of borrowerRate vs prosperRating/prosperScore/creditScoreRangeAvg, nor estimateLoss vs prosperRating/prosperScore/creditScoreRangeAvg resulted in a solid relationsship which could reasonably be assumed a good fit for a predictive model, it takes a combination of all 5.
+
+Variability of estimatedLoss/borrowerRate increases with weakening of prosperScore/prosperRating.
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the strengths and limitations of your model.
+No models created, but there seems to be a good chance that building a model using variables estimatedLoss/borrowerRate/creditScoreRangeAvg/prosperRating/prosperScore, would result in a tool to determine if loan offered is on good terms and/or a resonable risk/reward investment.
+
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r echo=FALSE, message=FALSE, warning=FALSE, Plot_One}
+ggplot(aes(x = borrowerRate), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  ggtitle('Count of BorrowerRate')
+
+
+ggplot(aes(x = borrowerRate), data = loansnew) +
+  geom_histogram(color = 'black', fill = '#F79420') +
+  facet_wrap(~prosperRating) +
+  ggtitle('BorrowerRate per ProsperRating')
+
+```
+
+### Description One
+
+BorrowerRates is between normal and Bi-modal distribution. Faceting this with ProsperRating we can see that the BorrowerRate peak > 0.3 is due to a heavy count of loans with a "HR" prosperRating (HR = High Risk)  
+
+### Plot Two
+```{r echo=FALSE, message=FALSE, warning=FALSE, Plot_Two}
+ggplot(aes(x = prosperRating, y = estimatedLoss), data = loansnew) +
+  geom_boxplot() +
+  ylim(0,0.2) +
+  ggtitle('ProsperRating vs EstimatedLoss')
+```
+
+### Description Two
+
+ProsperRating and EstimatedLoss are almost perfectly correlated with no overlap and very few outliers, showing a probable deliberate and systemic relationsship between these 2 variables.
+
+### Plot Three
+```{r echo=FALSE, message=FALSE, warning=FALSE, Plot_Three}
+ggplot(aes(x = creditScoreRangeAvg, y = estimatedLoss/borrowerRate), data = loansnewmulti) +
+  facet_wrap(~ prosperRating) +
+  geom_jitter(alpha = 1/4 , aes(color = prosperScore)) +
+  scale_fill_brewer(type = 'div') +
+  ggtitle('EstimatedLoss/BorrowerRate vs. CreditScoreRangeAvg faceted via ProsperScore')
+
+```
+
+### Description Three
+
+Building further on analysis and insights from univariate and bi-variate analysis, we arrive at a decent illustration hightlighting the consistency across records and the chosen variables, which is expected in financial loan records. I.e. a very clear relationship showing that the lower the CreditRatingScoreAvg/ProsperScore/ProsperRating the higher the estimatedLoss/borrowerRatio. Also as ProsperRating/creditScoreRangeAvg improves (rightshift in charts and data distribution) the color changes towards better prosperScore and lower ratio of estimatedLoss/borrowerRate.   
+
+------
+
+# Reflection
+the prosperloan dataset includes information for 113,937 records with 81 variables per record. I choose to limit this to 84,853 records removing all data which was from before July 2009, where the business model changed significantly and most complete and consistent dataset is post July 2009. From these 84,853 i choose 13 variables which were reduced to 12, as 2 of the 13 chosen variables were averaged into 1.
+
+From this data subset I first analyzed each variable individually, to find the structure and distribution of variables, and following this looked at the correlation between pairs of data. It was determined that of the chosen variables most interest is on borrowerRate and estimatedLoss. A number of other variables were quickly determined to be of less interest and with very little impact/correlation on the main variables (EmploymentStatus/Term/ListingCategory/isBorrowerHomeowner/LoanStatus). 
+
+There were a number of strong relationsships between main variables and rating variables(ProsperScore/ProsperRating/CreditScoreRating) from 0.51 to 0.96, which were further investigated and resulting finally in a 5 variable overview showing a highly connected as well as expected relationsship. I.e from a borrowerRate there seems to a predictable relationship between actual rate/variability vs. the indivual/combined scores/rating, the same relationship from an EstimatedLoss viewpoint.
+
+There were 81 variables in the original dataset and this analysis has been done on only 13, there is therefore a risk that data from the remaining 68 variables, would reveal insights that could discount or even dissprove the findings from the analysis on chosen variables. Analysis could therefore be improved/strengthen via include further variables.
+
+It seems likely given the analysis that a predictive model could be built using the 5 variables BorrowerRate/EstimatedLoss/CreditScoreRangeAvg/ProsperScore/ProsperRating, which could assist potential borrower in determening if borrowerRate offered is fair and consistent with peers, and assist potential loan investors in assesing the risk/reward profil on loan investment.    
+
+
+------
+
+# References
+* www.wikipedia.org//wiki/Prosper_Marketplace
+* www.prosper.com
